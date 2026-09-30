@@ -1,0 +1,10 @@
+# Pin LF everywhere: Git for Windows defaults to core.autocrlf=true,
+# which would check scripts out with CRLF and break bash at line 1.
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.tsv text eol=lf
+bin/* text eol=lf
+hooks/* text eol=lf

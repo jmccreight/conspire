@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# conspire launcher: locate python 3, exec conspire.py with the given
+# subcommand. Symlinked to ~/.local/bin/conspire by `conspire bootstrap`
+# (resolved through the link so the tool repo can live anywhere).
+SELF="$0"
+while [ -L "$SELF" ]; do
+    DIR="$(cd "$(dirname "$SELF")" && pwd)"
+    SELF="$(readlink "$SELF")"
+    case "$SELF" in /*) ;; *) SELF="$DIR/$SELF" ;; esac
+done
+TOOL="$(cd "$(dirname "$SELF")/.." && pwd)"
+PY="$(bash "$TOOL/bin/find_python.sh")" || {
+    echo "conspire: no python 3 found (set CONSPIRE_PYTHON or put python3 on PATH)" >&2
+    exit 1
+}
+exec "$PY" "$TOOL/conspire.py" "$@"

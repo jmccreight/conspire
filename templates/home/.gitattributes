@@ -1,0 +1,8 @@
+# Pin LF everywhere: Git for Windows defaults to core.autocrlf=true,
+# which would check files out with CRLF; eol=lf also keeps
+# `conspire check`'s byte comparison of the Windows settings and
+# output-styles copies stable.
+* text=auto
+*.md text eol=lf
+*.json text eol=lf
+*.tsv text eol=lf

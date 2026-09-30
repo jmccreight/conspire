@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Regenerate every memory store's MEMORY.md from frontmatter and stage
+# it, so the index is always derived, never authored. Fails the commit
+# if any index would exceed Claude Code's 200-line/25KB load limits.
+# Installed into the home repo by `conspire bootstrap` via
+# core.hooksPath = <tool>/hooks; $0 is this file's path, so the tool
+# repo is found relative to it.
+set -u
+REPO="$(git rev-parse --show-toplevel)"
+[ -d "$REPO/memory" ] || exit 0
+TOOL="$(cd "$(dirname "$0")/.." && pwd)"
+# The index is built from the working tree, so any memory file whose
+# worktree state differs from the staging area (edited after staging,
+# deleted, or untracked) would produce a wrong MEMORY.md. Refuse.
+bad="$(git -C "$REPO" status --porcelain -- memory \
+       | awk 'substr($0,2,1) != " "' | grep -v 'MEMORY\.md$')"
+if [ -n "$bad" ]; then
+    echo "conspire pre-commit: memory files differ between working tree and staging:" >&2
+    echo "$bad" >&2
+    echo "stage them (git add) or stash the edits, then re-commit" >&2
+    exit 1
+fi
+PY="$(bash "$TOOL/bin/find_python.sh")" || {
+    echo "conspire pre-commit: no python 3 found (set CONSPIRE_PYTHON);" \
+         "cannot regenerate MEMORY.md indexes" >&2
+    exit 1
+}
+CONSPIRE_HOME="$REPO" "$PY" "$TOOL/conspire.py" index || exit 1
+for d in "$REPO"/memory/*/; do
+    [ -f "$d/MEMORY.md" ] && git add "$d/MEMORY.md"
+done
+exit 0
