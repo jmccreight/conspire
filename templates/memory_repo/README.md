@@ -1,4 +1,4 @@
-# My conspire home repo
+# My conspire memory repo
 
 Claude Code instruction files, settings, and memory stores, synced
 across machines by [conspire](https://github.com/jmccreight/conspire).

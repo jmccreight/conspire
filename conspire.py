@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """conspire: keep Claude Code instruction files, settings, and memory in
-one git repo (your "home" repo), synced across machines.
+one git repo (your memory repo), synced across machines.
 
 Python 3.12+, stdlib only. ALL entry points -- the Claude Code session
 hooks, the git hooks, cron, and the command line -- run a subcommand
@@ -10,7 +10,7 @@ bin/find_python.sh). Direct invocation also works:
     python3 <conspire>/conspire.py <subcommand>
 
 Subcommands:
-    init           point conspire at a home repo (or create one with --new)
+    init           point conspire at a memory repo (or create one with --new)
     bootstrap      one-time machine setup (idempotent)
     check          verify this machine's wiring
     sync           commit local changes, ff-only pull, push (lock + timeouts)
@@ -25,10 +25,10 @@ divergence is reported and left to the human; MEMORY.md is derived,
 never authored; the machine tag is chosen, not detected.
 
 Where things live:
-    <tool>            this repo (code, hooks, templates)
-    <home>            your data repo: claude/, memory/, memory-registry.tsv
-    ~/.conspire/home  path of <home> ($CONSPIRE_HOME overrides)
-    ~/.conspire/machine  this machine's tag ($CONSPIRE_MACHINE overrides)
+    <tool>                   this repo (code, hooks, templates)
+    <memory_repo>            your data repo: claude/, memory/, memory-registry.tsv
+    ~/.conspire/memory_repo  path of <memory_repo> ($CONSPIRE_MEMORY_REPO overrides)
+    ~/.conspire/machine      this machine's tag ($CONSPIRE_MACHINE overrides)
 """
 
 import argparse
@@ -60,20 +60,20 @@ except ValueError:
 
 # ---------------------------------------------------------------- helpers
 
-def home_repo():
-    """The data repo. $CONSPIRE_HOME, else ~/.conspire/home; exits if
+def get_memory_repo():
+    """The data repo. $CONSPIRE_MEMORY_REPO, else ~/.conspire/memory_repo; exits if
     neither is set (run: conspire init)."""
-    p = os.environ.get("CONSPIRE_HOME", "").strip()
+    p = os.environ.get("CONSPIRE_MEMORY_REPO", "").strip()
     if not p:
-        f = CONF_DIR / "home"
+        f = CONF_DIR / "memory_repo"
         if f.is_file():
             p = f.read_text(encoding="utf-8").strip()
     if not p:
-        sys.exit("conspire: no home repo configured; run: conspire init <path>")
-    home = Path(p).expanduser()
-    if not home.is_dir():
-        sys.exit(f"conspire: home repo {home} does not exist; run: conspire init <path>")
-    return home
+        sys.exit("conspire: no memory repo configured; run: conspire init <path>")
+    memory_repo = Path(p).expanduser()
+    if not memory_repo.is_dir():
+        sys.exit(f"conspire: memory repo {memory_repo} does not exist; run: conspire init <path>")
+    return memory_repo
 
 
 def tilde(path):
@@ -131,13 +131,13 @@ def project_remotes(proj):
     return out
 
 
-def registry_path(home):
-    return home / "memory-registry.tsv"
+def registry_path(memory_repo):
+    return memory_repo / "memory-registry.tsv"
 
 
-def registry_rows(home):
+def registry_rows(memory_repo):
     rows = []
-    reg = registry_path(home)
+    reg = registry_path(memory_repo)
     if not reg.is_file():
         return rows
     for ln in reg.read_text(encoding="utf-8").splitlines():
@@ -186,21 +186,21 @@ def cmd_init(args):
         if target.exists() and any(target.iterdir()):
             print(f"error: {target} exists and is not empty")
             return 1
-        shutil.copytree(TOOL / "templates" / "home", target, dirs_exist_ok=True)
+        shutil.copytree(TOOL / "templates" / "memory_repo", target, dirs_exist_ok=True)
         r = git("init", "--quiet", cwd=target)
         if r.returncode != 0:
             print(f"error: git init failed: {git_said(r)}")
             return 1
-        print(f"created home repo {target} from templates/home")
+        print(f"created memory repo {target} from templates/memory_repo")
         print("  (add a remote and push when ready; sync works without one)")
     elif not target.is_dir():
         print(f"error: {target} is not a directory (use --new to create one)")
         return 1
     elif not (target / "memory").is_dir():
-        print(f"warning: {target} has no memory/ directory; is it a home repo?")
+        print(f"warning: {target} has no memory/ directory; is it a memory repo?")
     CONF_DIR.mkdir(parents=True, exist_ok=True)
-    (CONF_DIR / "home").write_text(str(target) + "\n", encoding="utf-8")
-    print(f"home repo: {target} -> {CONF_DIR / 'home'}")
+    (CONF_DIR / "memory_repo").write_text(str(target) + "\n", encoding="utf-8")
+    print(f"memory repo: {target} -> {CONF_DIR / 'memory_repo'}")
     print("next: conspire bootstrap")
     return 0
 
@@ -208,9 +208,9 @@ def cmd_init(args):
 # ------------------------------------------------------------------- sync
 
 def cmd_sync(args):
-    home = home_repo()
+    memory_repo = get_memory_repo()
     quiet = getattr(args, "quiet", False)
-    lock = home / ".sync.lock"
+    lock = memory_repo / ".sync.lock"
 
     def say(msg):
         if not quiet:
@@ -226,13 +226,13 @@ def cmd_sync(args):
     rc = 0
     try:
         tag = machine_tag() or "unset-machine"
-        st = git("status", "--porcelain", cwd=home)
+        st = git("status", "--porcelain", cwd=memory_repo)
         if st.returncode != 0:
             loud(f"git status failed: {git_said(st)}")
             return 1
         if st.stdout.strip():
-            git("add", "-A", cwd=home)
-            c = git("commit", "--quiet", "-m", f"sync from {tag}", cwd=home)
+            git("add", "-A", cwd=memory_repo)
+            c = git("commit", "--quiet", "-m", f"sync from {tag}", cwd=memory_repo)
             if c.returncode != 0:
                 loud("COMMIT FAILED -- memory writes are NOT synced; "
                      "fix and re-run sync")
@@ -240,18 +240,18 @@ def cmd_sync(args):
                 rc = 1
             else:
                 say("committed local changes")
-        origin = git("remote", "get-url", "origin", cwd=home)
+        origin = git("remote", "get-url", "origin", cwd=memory_repo)
         if origin.returncode != 0:
             say("no origin remote configured; skipping pull/push")
             return rc
         try:
-            p = git("pull", "--ff-only", "--quiet", cwd=home)
+            p = git("pull", "--ff-only", "--quiet", cwd=memory_repo)
             if p.returncode != 0:
                 loud("cannot fast-forward (offline or diverged). "
-                     f"If diverged: cd {home} && git pull --rebase")
+                     f"If diverged: cd {memory_repo} && git pull --rebase")
                 loud(f"git said: {git_said(p)}")
                 rc = 1
-            pu = git("push", "--quiet", cwd=home)
+            pu = git("push", "--quiet", cwd=memory_repo)
             if pu.returncode != 0:
                 loud(f"push failed: {git_said(pu)}")
                 rc = 1
@@ -266,27 +266,27 @@ def cmd_sync(args):
 
 # ---------------------------------------------------------- session hooks
 
-def sync_status_line(home):
+def sync_status_line(memory_repo):
     """Freshness computed from git state, not from 'the sync ran'."""
     parts = []
-    r = git("rev-list", "--left-right", "--count", "@{upstream}...HEAD", cwd=home)
+    r = git("rev-list", "--left-right", "--count", "@{upstream}...HEAD", cwd=memory_repo)
     if r.returncode == 0 and len(r.stdout.split()) == 2:
         behind, ahead = (int(x) for x in r.stdout.split())
         if ahead == 0 and behind == 0:
             parts.append("in sync with origin")
         else:
-            note = (f" -- DIVERGED: cd {tilde(home)} && git pull --rebase"
+            note = (f" -- DIVERGED: cd {tilde(memory_repo)} && git pull --rebase"
                     if ahead and behind else "")
             parts.append(f"ahead {ahead} / behind {behind}{note}")
     else:
         parts.append("no upstream tracking info")
-    st = git("status", "--porcelain", cwd=home)
+    st = git("status", "--porcelain", cwd=memory_repo)
     if st.returncode == 0 and st.stdout.strip():
         parts.append("uncommitted changes present")
     return "; ".join(parts)
 
 
-def memory_state(home, proj):
+def memory_state(memory_repo, proj):
     memdir = None
     for name in (".claude/settings.local.json", ".claude/settings.json"):
         f = proj / name
@@ -300,12 +300,12 @@ def memory_state(home, proj):
                 break
     if memdir:
         try:
-            Path(memdir).expanduser().resolve().relative_to(home.resolve())
+            Path(memdir).expanduser().resolve().relative_to(memory_repo.resolve())
             return "VERSION CONTROLLED", f"-> {memdir}"
         except ValueError:
             return "LOCAL (custom dir)", f"-> {memdir}"
     idents = project_remotes(proj) | {f"path:{proj}"}
-    for row in registry_rows(home):
+    for row in registry_rows(memory_repo):
         if idents & set(row["remotes"]):
             if row["decision"] == "out":
                 return "NOT VERSION CONTROLLED", f"(opted out {row['date']})"
@@ -317,16 +317,16 @@ def memory_state(home, proj):
 
 
 def cmd_session_start(args):
-    home = home_repo()
+    memory_repo = get_memory_repo()
     cmd_sync(argparse.Namespace(quiet=True))
     tag = machine_tag() or "UNSET (run: conspire bootstrap)"
     proj = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
-    state, detail = memory_state(home, proj)
+    state, detail = memory_state(memory_repo, proj)
     print("conspire session status")
     print(f"  machine:  {tag}")
     print(f"  project:  {proj}")
     print(f"  memory:   {state} {detail}")
-    print(f"  sync:     {sync_status_line(home)}")
+    print(f"  sync:     {sync_status_line(memory_repo)}")
     print("Claude: surface this block briefly in your first reply. If memory is")
     print("UNREGISTERED, poll the user: version-controlled memory, or opt out?")
     return 0
@@ -338,10 +338,10 @@ def cmd_session_end(args):
     # including a pre-commit refusal -- would be invisible and
     # unmanageable. A manual `conspire sync` at wrap-up and the next
     # session-start sync cover the gap.
-    home = home_repo()
+    memory_repo = get_memory_repo()
     stamp = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
     tag = machine_tag() or "unset-machine"
-    with open(home / ".session-end.log", "a", encoding="utf-8") as fh:
+    with open(memory_repo / ".session-end.log", "a", encoding="utf-8") as fh:
         fh.write(f"{stamp} {tag} {os.getcwd()}\n")
     return 0
 
@@ -425,17 +425,17 @@ def build_index(store):
     return content, warnings
 
 
-def memory_stores(home):
-    mem = home / "memory"
+def memory_stores(memory_repo):
+    mem = memory_repo / "memory"
     if not mem.is_dir():
         return []
     return sorted(p for p in mem.iterdir() if p.is_dir())
 
 
 def cmd_index(args):
-    home = home_repo()
+    memory_repo = get_memory_repo()
     stores = ([Path(s) for s in args.stores] if args.stores
-              else memory_stores(home))
+              else memory_stores(memory_repo))
     rc = 0
     for store in stores:
         if not store.is_dir():
@@ -471,8 +471,8 @@ def cmd_index(args):
 
 # --------------------------------------------------------------- register
 
-def upsert_registry(home, name, idents, decision):
-    reg = registry_path(home)
+def upsert_registry(memory_repo, name, idents, decision):
+    reg = registry_path(memory_repo)
     lines = (reg.read_text(encoding="utf-8").splitlines()
              if reg.is_file() else ["name\tremotes\tdecision\tdate"])
     out, found = [], False
@@ -495,7 +495,7 @@ def upsert_registry(home, name, idents, decision):
 
 
 def cmd_register(args):
-    home = home_repo()
+    memory_repo = get_memory_repo()
     top = git("rev-parse", "--show-toplevel", cwd=Path.cwd())
     proj = Path(top.stdout.strip()) if top.returncode == 0 else Path.cwd()
 
@@ -522,7 +522,7 @@ def cmd_register(args):
 
     # Existing row? Checked BEFORE any write, so a name collision can't
     # silently point a different project at this name's store.
-    row = next((r for r in registry_rows(home) if r["name"] == name), None)
+    row = next((r for r in registry_rows(memory_repo) if r["name"] == name), None)
     if row:
         decision = row["decision"]
         if set(idents) & set(row["remotes"]):
@@ -540,15 +540,15 @@ def cmd_register(args):
                 return 1
             print(f"registry: will merge this clone's remotes into '{name}'")
     else:
-        decision = input(f"memory: version-controlled in {tilde(home)}, "
+        decision = input(f"memory: version-controlled in {tilde(memory_repo)}, "
                          "or machine-local? [in/out]: ").strip()
         if decision not in ("in", "out"):
             print("error: answer 'in' or 'out'")
             return 1
 
     if decision == "in":
-        (home / "memory" / name).mkdir(parents=True, exist_ok=True)
-        memdir = f"{tilde(home)}/memory/{name}"
+        (memory_repo / "memory" / name).mkdir(parents=True, exist_ok=True)
+        memdir = f"{tilde(memory_repo)}/memory/{name}"
         sf = proj / ".claude" / "settings.local.json"
         try:
             settings = (json.loads(sf.read_text(encoding="utf-8"))
@@ -562,18 +562,18 @@ def cmd_register(args):
         sf.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
         print(f"wrote autoMemoryDirectory -> {memdir} in {sf}")
 
-    upsert_registry(home, name, idents, decision)
+    upsert_registry(memory_repo, name, idents, decision)
     print("done. Sync will pick this up (or run: conspire sync)")
     return 0
 
 
 # ------------------------------------------------------------------ check
 
-def instruction_stubs(home):
-    """(target, import) pairs: every <home>/claude/*.md gets a one-line
+def instruction_stubs(memory_repo):
+    """(target, import) pairs: every <memory_repo>/claude/*.md gets a one-line
     @import stub of the same name in ~/.claude/."""
-    return [(CLAUDE_DIR / f.name, f"{tilde(home)}/claude/{f.name}")
-            for f in sorted((home / "claude").glob("*.md"))]
+    return [(CLAUDE_DIR / f.name, f"{tilde(memory_repo)}/claude/{f.name}")
+            for f in sorted((memory_repo / "claude").glob("*.md"))]
 
 
 def _in_repo(path, repo):
@@ -585,7 +585,7 @@ def _in_repo(path, repo):
 
 
 def cmd_check(args):
-    home = home_repo()
+    memory_repo = get_memory_repo()
     rc = 0
 
     def ok(msg):
@@ -596,7 +596,7 @@ def cmd_check(args):
         print(f"BROKEN: {msg}")
         rc = 1
 
-    ok(f"home repo {home}")
+    ok(f"memory repo {memory_repo}")
 
     env_tag = os.environ.get("CONSPIRE_MACHINE", "").strip()
     if env_tag:
@@ -620,7 +620,7 @@ def cmd_check(args):
     else:
         fail(f"{launcher} missing (run bootstrap)")
 
-    hp = git("config", "core.hooksPath", cwd=home)
+    hp = git("config", "core.hooksPath", cwd=memory_repo)
     want = str(TOOL / "hooks")
     if hp.stdout.strip() == want:
         ok(f"core.hooksPath = {want}")
@@ -628,7 +628,7 @@ def cmd_check(args):
         fail(f"core.hooksPath is '{hp.stdout.strip() or 'unset'}', "
              f"expected '{want}' (run bootstrap)")
 
-    for target, imp in instruction_stubs(home):
+    for target, imp in instruction_stubs(memory_repo):
         if not target.exists():
             fail(f"{target} missing (run bootstrap)")
         elif target.is_symlink():
@@ -641,17 +641,17 @@ def cmd_check(args):
                  "overwritten it; re-run bootstrap, then merge its content "
                  "into the repo copy)")
 
-    sj, repo_sj = CLAUDE_DIR / "settings.json", home / "claude" / "settings.json"
+    sj, repo_sj = CLAUDE_DIR / "settings.json", memory_repo / "claude" / "settings.json"
     if not repo_sj.is_file():
-        ok("no claude/settings.json in home repo (not managed)")
+        ok("no claude/settings.json in memory repo (not managed)")
     elif sj.is_symlink():
-        if _in_repo(sj, home):
-            ok(f"{sj} (symlink into home repo)")
+        if _in_repo(sj, memory_repo):
+            ok(f"{sj} (symlink into memory repo)")
         else:
-            fail(f"{sj} symlinks outside the home repo")
+            fail(f"{sj} symlinks outside the memory repo")
     elif sj.is_file():
         if filecmp.cmp(sj, repo_sj, shallow=False):
-            ok(f"{sj} (copy, in sync with home repo)")
+            ok(f"{sj} (copy, in sync with memory repo)")
         else:
             fail(f"{sj} is a copy that has drifted from claude/settings.json "
                  "(re-run bootstrap or reconcile by hand)")
@@ -659,18 +659,18 @@ def cmd_check(args):
         fail(f"{sj} missing (run bootstrap)")
 
     for name in ("output-styles", "skills"):
-        osd, repo_osd = CLAUDE_DIR / name, home / "claude" / name
+        osd, repo_osd = CLAUDE_DIR / name, memory_repo / "claude" / name
         if not repo_osd.is_dir():
-            ok(f"no claude/{name} in home repo (not managed)")
+            ok(f"no claude/{name} in memory repo (not managed)")
         elif osd.is_symlink():
-            if _in_repo(osd, home):
-                ok(f"{osd} (symlink into home repo)")
+            if _in_repo(osd, memory_repo):
+                ok(f"{osd} (symlink into memory repo)")
             else:
-                fail(f"{osd} symlinks outside the home repo")
+                fail(f"{osd} symlinks outside the memory repo")
         elif osd.is_dir():
             d = filecmp.dircmp(osd, repo_osd)
             if not (d.diff_files or d.left_only or d.right_only or d.funny_files):
-                ok(f"{osd} (copy, in sync with home repo)")
+                ok(f"{osd} (copy, in sync with memory repo)")
             else:
                 fail(f"{osd} is a copy that has drifted from claude/{name} "
                      "(re-run bootstrap or reconcile by hand)")
@@ -701,7 +701,7 @@ def cmd_check(args):
                      "dead? (run `conspire kiro-sync` by hand; check crontab)")
             else:
                 ok(f"kiro mirror synced {age_h:.1f}h ago")
-        missing = [f.name for f in kiro_steering_files(home)
+        missing = [f.name for f in kiro_steering_files(memory_repo)
                    if not (kiro / "steering" / f.name).is_file()]
         if missing:
             fail("kiro steering missing: " + " ".join(missing)
@@ -714,12 +714,12 @@ def cmd_check(args):
 
 # -------------------------------------------------------------- kiro-sync
 
-def kiro_steering_files(home):
-    """Steering shipped with the tool, then the home repo's own
-    kiro/steering/*.md (same name in both: the home repo wins)."""
+def kiro_steering_files(memory_repo):
+    """Steering shipped with the tool, then the memory repo's own
+    kiro/steering/*.md (same name in both: the memory repo wins)."""
     files = {}
     for d in (TOOL / "templates" / "kiro" / "steering",
-              home / "kiro" / "steering"):
+              memory_repo / "kiro" / "steering"):
         if d.is_dir():
             for f in sorted(d.glob("*.md")):
                 files[f.name] = f
@@ -727,7 +727,7 @@ def kiro_steering_files(home):
 
 
 def cmd_kiro_sync(args):
-    home = home_repo()
+    memory_repo = get_memory_repo()
     kiro = USER_HOME / ".kiro"
     if not kiro.is_dir():
         return 0                      # not a Kiro machine; nothing to do
@@ -738,7 +738,7 @@ def cmd_kiro_sync(args):
     inbox_root = mirror / "inbox"
     if inbox_root.is_dir():
         for d in sorted(p for p in inbox_root.iterdir() if p.is_dir()):
-            store = home / "memory" / d.name
+            store = memory_repo / "memory" / d.name
             if not store.is_dir():
                 print(f"kiro-sync: unknown store in inbox: {d.name} (skipped)")
                 continue
@@ -757,11 +757,11 @@ def cmd_kiro_sync(args):
         target = mirror / sub
         if target.exists():
             shutil.rmtree(target)
-        if (home / sub).is_dir():
-            shutil.copytree(home / sub, target)
-    if registry_path(home).is_file():
-        shutil.copy2(registry_path(home), mirror / "memory-registry.tsv")
-    for s in memory_stores(home):
+        if (memory_repo / sub).is_dir():
+            shutil.copytree(memory_repo / sub, target)
+    if registry_path(memory_repo).is_file():
+        shutil.copy2(registry_path(memory_repo), mirror / "memory-registry.tsv")
+    for s in memory_stores(memory_repo):
         (mirror / "inbox" / s.name).mkdir(parents=True, exist_ok=True)
     tag = machine_tag()
     if tag:
@@ -771,7 +771,7 @@ def cmd_kiro_sync(args):
         encoding="utf-8")
     steering = kiro / "steering"
     steering.mkdir(parents=True, exist_ok=True)
-    for f in kiro_steering_files(home):
+    for f in kiro_steering_files(memory_repo):
         shutil.copy2(f, steering / f.name)
     return 0
 
@@ -819,8 +819,8 @@ def _link_or_copy(src, dst):
 
 
 def cmd_bootstrap(args):
-    home = home_repo()
-    print(f"== conspire bootstrap (home repo: {home}) ==")
+    memory_repo = get_memory_repo()
+    print(f"== conspire bootstrap (memory repo: {memory_repo}) ==")
     CONF_DIR.mkdir(parents=True, exist_ok=True)
     CLAUDE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -853,7 +853,7 @@ def cmd_bootstrap(args):
         print(f"  NOTE: {bin_dir} is not on PATH; add it in your shell profile")
 
     # 3. versioned git hooks, served from the tool repo
-    r = git("config", "core.hooksPath", str(TOOL / "hooks"), cwd=home)
+    r = git("config", "core.hooksPath", str(TOOL / "hooks"), cwd=memory_repo)
     if r.returncode != 0:
         print(f"error: git config failed: {git_said(r)}")
         return 1
@@ -862,7 +862,7 @@ def cmd_bootstrap(args):
     # 4. instruction stubs: real one-line @import files, Windows-safe.
     # Any differing existing file is backed up -- including one that
     # contains the stub line plus extra content (e.g. an installer's block).
-    for target, imp in instruction_stubs(home):
+    for target, imp in instruction_stubs(memory_repo):
         desired = f"@{imp}\n"
         if target.is_symlink():
             target.unlink()
@@ -877,9 +877,9 @@ def cmd_bootstrap(args):
 
     # 5. settings.json, output-styles, skills: no import mechanism exists,
     # so symlink (copy where symlinks aren't available). Each only if the
-    # home repo has it.
+    # memory repo has it.
     for name in ("settings.json", "output-styles", "skills"):
-        src = home / "claude" / name
+        src = memory_repo / "claude" / name
         if src.exists():
             _link_or_copy(src, CLAUDE_DIR / name)
 
@@ -897,10 +897,10 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("init", help="point conspire at a home repo")
-    p.add_argument("path", help="the home repo (data) directory")
+    p = sub.add_parser("init", help="point conspire at a memory repo")
+    p.add_argument("path", help="the memory repo (data) directory")
     p.add_argument("--new", action="store_true",
-                   help="create it from templates/home and git init")
+                   help="create it from templates/memory_repo and git init")
     p.set_defaults(fn=cmd_init)
 
     sub.add_parser("bootstrap", help="one-time machine setup").set_defaults(

@@ -2,7 +2,7 @@
 # Regenerate every memory store's MEMORY.md from frontmatter and stage
 # it, so the index is always derived, never authored. Fails the commit
 # if any index would exceed Claude Code's 200-line/25KB load limits.
-# Installed into the home repo by `conspire bootstrap` via
+# Installed into the memory repo by `conspire bootstrap` via
 # core.hooksPath = <tool>/hooks; $0 is this file's path, so the tool
 # repo is found relative to it.
 set -u
@@ -25,7 +25,7 @@ PY="$(bash "$TOOL/bin/find_python.sh")" || {
          "cannot regenerate MEMORY.md indexes" >&2
     exit 1
 }
-CONSPIRE_HOME="$REPO" "$PY" "$TOOL/conspire.py" index || exit 1
+CONSPIRE_MEMORY_REPO="$REPO" "$PY" "$TOOL/conspire.py" index || exit 1
 for d in "$REPO"/memory/*/; do
     [ -f "$d/MEMORY.md" ] && git add "$d/MEMORY.md"
 done

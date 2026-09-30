@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Append a "Machine: <tag>" trailer to every commit in the home repo,
+# Append a "Machine: <tag>" trailer to every commit in the memory repo,
 # giving each memory/config edit machine provenance in git log.
 MSGFILE="$1"
 TAG="${CONSPIRE_MACHINE:-}"
 [ -z "$TAG" ] && [ -f "$HOME/.conspire/machine" ] && TAG="$(cat "$HOME/.conspire/machine")"
-[ -z "$TAG" ] && [ -f "$HOME/.claude/machine-id" ] && TAG="$(cat "$HOME/.claude/machine-id")"
 [ -z "$TAG" ] && TAG="unset-machine"
 grep -q "^Machine: " "$MSGFILE" || printf '\nMachine: %s\n' "$TAG" >> "$MSGFILE"
