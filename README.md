@@ -63,17 +63,21 @@ Existing files are moved aside, never merged (only if they differ):
   ~/.claude/CLAUDE.md       ---mv-->  ~/.claude/CLAUDE.md.pre-bootstrap.<timestamp>
   ~/.claude/settings.json   ---mv-->  ~/.claude/settings.json.pre-bootstrap.<timestamp>
   ~/.claude/output-styles/  ---mv-->  ~/.claude/output-styles.pre-bootstrap.<timestamp>/
-  ~/.claude/skills/         ---mv-->  ~/.claude/skills.pre-bootstrap.<timestamp>/
+  ~/.claude/skills/<name>/  ---mv-->  ~/.claude/skills/<name>.pre-bootstrap.<timestamp>/
 
 Instruction files: ~/.claude/CLAUDE.md becomes a one-line file that
 tells Claude Code to read the memory repo's copy instead (one per claude/*.md)
   ~/.claude/CLAUDE.md       contains  "@~/my_claude_memories/claude/CLAUDE.md"
   ~/.claude/<other>.md      contains  "@~/my_claude_memories/claude/<other>.md"
 
-Settings, output styles, skills: symlinks (copies on Windows)
+Settings, output styles: symlinks (copies on Windows)
   ~/.claude/settings.json   ---symlink-->  ~/my_claude_memories/claude/settings.json
   ~/.claude/output-styles/  ---symlink-->  ~/my_claude_memories/claude/output-styles/
-  ~/.claude/skills/         ---symlink-->  ~/my_claude_memories/claude/skills/
+
+Skills: one symlink per skill, from conspire's own skills/ and from
+the memory repo's claude/skills/; the same name in both is an error
+  ~/.claude/skills/memory-prune/  ---symlink-->  ~/conspire/skills/memory-prune/
+  ~/.claude/skills/<yours>/       ---symlink-->  ~/my_claude_memories/claude/skills/<yours>/
 
 Memory: nothing yet -- one project store (memory/<name>/) per project, created on register
   ~/my_claude_memories/memory/     empty

@@ -6,3 +6,4 @@
 .claude/settings.local.json
 /.session-end.log
 /.sync.lock/
+/claude/skills/synced/

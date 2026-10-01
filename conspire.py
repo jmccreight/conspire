@@ -25,8 +25,9 @@ divergence is reported and left to the human; MEMORY.md is derived,
 never authored; the machine tag is chosen, not detected.
 
 Where things live:
-    <tool>                   this repo (code, hooks, templates)
+    <tool>                   this repo (code, hooks, templates, skills/)
     <memory_repo>            your data repo: claude/, memory/, memory-registry.tsv
+    ~/.claude/skills/<name>  one link per skill, from <tool>/skills and <memory_repo>/claude/skills
     ~/.conspire/memory_repo  path of <memory_repo> ($CONSPIRE_MEMORY_REPO overrides)
     ~/.conspire/machine      this machine's tag ($CONSPIRE_MACHINE overrides)
 """
@@ -576,6 +577,32 @@ def instruction_stubs(memory_repo):
             for f in sorted((memory_repo / "claude").glob("*.md"))]
 
 
+def skill_sources(memory_repo):
+    """{name: dir} of every skill conspire manages: <tool>/skills/* plus
+    <memory_repo>/claude/skills/*. Also returns the clashes -- a name
+    in both places -- since there is no winner. `synced` is Claude
+    Code's own cache of account skills, never a source."""
+    srcs, clash = {}, []
+    for root in (TOOL / "skills", memory_repo / "claude" / "skills"):
+        if not root.is_dir():
+            continue
+        for d in sorted(root.iterdir()):
+            if not d.is_dir() or d.name.startswith(".") or d.name == "synced":
+                continue
+            if d.name in srcs:
+                clash.append((d.name, srcs[d.name], d))
+            else:
+                srcs[d.name] = d
+    return srcs, clash
+
+
+def clash_report(clash):
+    print("ERROR: skill name clash -- the same skill is in the tool and "
+          "in the memory repo. Rename one, then re-run:")
+    for name, a, b in clash:
+        print(f"  {name}:\n    {a}\n    {b}")
+
+
 def _in_repo(path, repo):
     try:
         path.resolve().relative_to(repo.resolve())
@@ -658,7 +685,7 @@ def cmd_check(args):
     else:
         fail(f"{sj} missing (run bootstrap)")
 
-    for name in ("output-styles", "skills"):
+    for name in ("output-styles",):
         osd, repo_osd = CLAUDE_DIR / name, memory_repo / "claude" / name
         if not repo_osd.is_dir():
             ok(f"no claude/{name} in memory repo (not managed)")
@@ -676,6 +703,35 @@ def cmd_check(args):
                      "(re-run bootstrap or reconcile by hand)")
         else:
             fail(f"{osd} missing (run bootstrap)")
+
+    skills, clash = skill_sources(memory_repo)
+    sd = CLAUDE_DIR / "skills"
+    if (memory_repo / "claude" / "skills" / "synced").exists():
+        fail("Claude Code's skills cache is inside the memory repo "
+             "(claude/skills/synced); add /claude/skills/synced/ to "
+             ".gitignore and git rm -r --cached it")
+    if clash:
+        clash_report(clash)
+        fail("skill name clash (see above)")
+    elif not skills:
+        ok("no skills in tool or memory repo (not managed)")
+    elif sd.is_symlink():
+        fail(f"{sd} is a whole-directory symlink; skills are now linked "
+             "one by one (run bootstrap)")
+    else:
+        for name, src in skills.items():
+            t = sd / name
+            if t.is_symlink() and t.resolve() == src.resolve():
+                ok(f"{t} -> {src}")
+            elif t.is_dir():
+                d = filecmp.dircmp(t, src)
+                if d.diff_files or d.left_only or d.right_only or d.funny_files:
+                    fail(f"{t} is a copy that has drifted from {src} "
+                         "(re-run bootstrap or reconcile by hand)")
+                else:
+                    ok(f"{t} (copy, in sync with {src})")
+            else:
+                fail(f"{t} missing (run bootstrap)")
 
     # Index freshness AND limits: regenerate in memory, compare to disk.
     if cmd_index(argparse.Namespace(check=True, stores=[])) == 0:
@@ -820,6 +876,10 @@ def _link_or_copy(src, dst):
 
 def cmd_bootstrap(args):
     memory_repo = get_memory_repo()
+    skills, clash = skill_sources(memory_repo)
+    if clash:
+        clash_report(clash)
+        return 1
     print(f"== conspire bootstrap (memory repo: {memory_repo}) ==")
     CONF_DIR.mkdir(parents=True, exist_ok=True)
     CLAUDE_DIR.mkdir(parents=True, exist_ok=True)
@@ -875,13 +935,26 @@ def cmd_bootstrap(args):
         target.write_text(desired, encoding="utf-8")
         print(f"stub: {target} -> @{imp}")
 
-    # 5. settings.json, output-styles, skills: no import mechanism exists,
-    # so symlink (copy where symlinks aren't available). Each only if the
-    # memory repo has it.
-    for name in ("settings.json", "output-styles", "skills"):
+    # 5. settings.json, output-styles: no import mechanism exists, so
+    # symlink (copy where symlinks aren't available), only if the
+    # memory repo has it. Skills: one link per skill, so the tool's
+    # and the memory repo's skills share ~/.claude/skills/; an old
+    # whole-directory link is replaced.
+    for name in ("settings.json", "output-styles"):
         src = memory_repo / "claude" / name
         if src.exists():
             _link_or_copy(src, CLAUDE_DIR / name)
+    sd = CLAUDE_DIR / "skills"
+    if skills:
+        if sd.is_symlink():
+            sd.unlink()
+        sd.mkdir(exist_ok=True)
+        synced = sd / "synced"
+        if synced.is_symlink() and _in_repo(synced, memory_repo):
+            synced.unlink()      # Claude Code's cache; it rebuilds it
+            print(f"unlinked {synced} (Claude Code owns that directory)")
+        for name, src in skills.items():
+            _link_or_copy(src, sd / name)
 
     print()
     print("done. Verify with: conspire check")

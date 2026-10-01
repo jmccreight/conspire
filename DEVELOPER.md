@@ -10,7 +10,9 @@
     CLAUDE.md            # ~/.claude/CLAUDE.md contains only: "@~/my_claude_memories/claude/CLAUDE.md"
     settings.json        # ~/.claude/settings.json symlinks here; carries the session hooks
     output-styles/       # optional; ~/.claude/output-styles symlinks here
-    skills/              # optional; same
+    skills/              # optional; each skill linked into ~/.claude/skills/<name>
+                         # (never a `synced/` dir: ~/.claude/skills/synced/ is Claude
+                         # Code's cache of account skills, not linked, not synced)
   memory/
     project_one/         # project store for every clone of project_one, on every machine
       MEMORY.md          # generated index -- never hand-edited
@@ -20,6 +22,7 @@
       MEMORY.md
       release-plan.md
   memory-registry.tsv    # 3 rows: project_one in, project_two in, scratch-repo out
+  prune-limits.tsv       # per-store line/char limits for the memory-prune skill
   README.md
 ```
 
@@ -74,7 +77,11 @@ The memory repo holds instruction files, settings, and `memory/`
 content — nothing else. Claude Code's conversation logs, the `*.jsonl`
 files under `~/.claude/projects/`, are not memory and must never leave
 the machine. Nothing in conspire copies them; the template
-`.gitignore` blocks `*.jsonl` as a backstop.
+`.gitignore` blocks `*.jsonl` as a backstop. Same for
+`~/.claude/skills/synced/`, Claude Code's cache of the skills attached
+to your account: conspire never links it, and the template
+`.gitignore` blocks `/claude/skills/synced/` in case it ever lands in
+the repo (it did once, through the old whole-directory skills link).
 
 ## Kiro adapter
 

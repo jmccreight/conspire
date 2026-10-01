@@ -10,6 +10,7 @@ across machines by [conspire](https://github.com/jmccreight/conspire).
       skills/             optional; linked to ~/.claude/skills
     memory/<name>/        one auto-memory store per project family
     memory-registry.tsv   which projects are in (version-controlled) or out
+    prune-limits.tsv      per-store size limits used by the memory-prune skill
     kiro/steering/        optional; extra Kiro steering files (see conspire README)
 
 Every other `claude/*.md` file also gets a one-line stub in `~/.claude/`,
