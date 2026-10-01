@@ -30,6 +30,13 @@ for the answer:
   <CHARS> for CHARS (description: length). Use these, or enter your
   own?"
 
+Once answered, write this store's row in `prune-limits.tsv` at once
+(creating the file with a header line if needed) with the values
+chosen and `set` = `<today> before a run`, unless an existing row
+already holds those values. The session-start hook reads this file,
+so a run that stops early must not leave the store measured against
+the wrong limits.
+
 Then build one report. Change nothing while building it.
 
 0. Every file's creation date and last-change date, from
@@ -71,6 +78,5 @@ deletion, show the file's full text first. After edits, list the
 changed files and remind the user to run `conspire sync`.
 
 Finally, ask the user whether LINES and CHARS were about right for
-this store. If they change either, or the store has no row yet, write
-this store's row (creating the file with a header line if needed)
-with the values used and `set` = `<today> after a run`.
+this store. Rewrite the row with the values they settle on and
+`set` = `<today> after a run`.
