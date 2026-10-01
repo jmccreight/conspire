@@ -48,7 +48,11 @@ Each project store (`memory/<name>/`) has a `MEMORY.md`. It is the only
 memory file Claude Code loads at session start: one line per memory
 file, giving its name and a one-line description, so the agent can
 decide which files are worth opening. Claude Code stops reading it past
-200 lines or 25 KB, silently.
+200 lines or 25 KB, silently. Those limits are not queryable from Claude
+Code; they are `MAX_LINES` and `MAX_BYTES` in `conspire.py`, copied from
+the memory page of the Claude Code docs
+(https://code.claude.com/docs/en/memory), last checked against Claude
+Code 2.1.285 on 2026-10-01. Re-check them when Claude Code upgrades.
 
 conspire generates it. The pre-commit hook rebuilds `MEMORY.md` from
 the `name:` and `description:` fields at the top of every memory file

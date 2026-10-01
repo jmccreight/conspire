@@ -18,7 +18,7 @@ Start by printing, before any other tool call:
 Limits are per store, in `<MEMORY_REPO>/prune-limits.tsv`
 (tab-separated: store, lines, chars, set). The store name is STORE's
 directory name; a store with no row uses the `default` row; no file
-means default 150 lines, 150 chars. Ask, in these words, then wait
+means default 200 lines, 250 chars. Ask, in these words, then wait
 for the answer:
 
 - no row: "No limits for LINES or CHARS have yet been set for pruning

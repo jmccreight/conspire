@@ -52,6 +52,8 @@ CLAUDE_DIR = USER_HOME / ".claude"
 LOCK_STALE_S = 600
 MAX_LINES = 200          # Claude Code loads only the first 200 lines /
 MAX_BYTES = 25 * 1024    # 25KB of MEMORY.md; beyond that is silently dropped.
+                         # Not queryable; from the Claude Code memory docs,
+                         # checked against Claude Code 2.1.285 (see DEVELOPER.md).
 
 try:
     GIT_TIMEOUT_S = int(os.environ.get("CONSPIRE_GIT_TIMEOUT", "30"))
@@ -319,9 +321,9 @@ def memory_state(memory_repo, proj):
 
 def prune_limits(memory_repo, store):
     """(lines, chars) for a store from <memory_repo>/prune-limits.tsv:
-    the store's row, else the default row, else 150/150. The same
+    the store's row, else the default row, else 200/250. The same
     file the memory-prune skill reads and writes."""
-    lines, chars = 150, 150
+    lines, chars = 200, 250
     f = memory_repo / "prune-limits.tsv"
     if not f.is_file():
         return lines, chars
@@ -357,17 +359,34 @@ def store_stats(store_dir, lines, chars):
 
 
 def store_summary(memory_repo, detail):
-    """'(N files; within limits)' or '(N files; over limits: ...)' for a
-    VERSION CONTROLLED memory line; '' if the store dir is missing."""
+    """'(N files; within CHAR & LINE limits)' or '(N files; over LINE
+    limit: ...; over CHAR limit: ...)' for a VERSION CONTROLLED memory
+    line; '' if the store dir is missing."""
     store_dir = Path(detail[3:]).expanduser()
     if not store_dir.is_dir():
         return "", False
     n, over_l, over_c = store_stats(store_dir, *prune_limits(memory_repo, store_dir.name))
     if not (over_l or over_c):
-        return f" ({n} files; within limits)", False
-    parts = ([f"{over_l} file{'s' if over_l != 1 else ''}"] if over_l else []) + \
-            ([f"{over_c} description{'s' if over_c != 1 else ''}"] if over_c else [])
-    return f" ({n} files; over limits: {', '.join(parts)})", True
+        return f" ({n} files; within CHAR & LINE limits)", False
+    parts = ([f"over LINE limit: {over_l} file{'s' if over_l != 1 else ''}"] if over_l else []) + \
+            ([f"over CHAR limit: {over_c} description{'s' if over_c != 1 else ''}"] if over_c else [])
+    return f" ({n} files; {'; '.join(parts)})", True
+
+
+def index_summary(detail):
+    """'MEMORY.md N lines / X KB, P% of Claude Code's load limit (...)'
+    for the index: line, and whether P >= 80. Uses build_index, the
+    same generator the pre-commit hook runs, so the numbers agree."""
+    store_dir = Path(detail[3:]).expanduser()
+    if not store_dir.is_dir():
+        return "", False
+    content, _ = build_index(store_dir)
+    n_lines, n_bytes = content.count("\n"), len(content.encode("utf-8"))
+    pct = max(n_lines / MAX_LINES, n_bytes / MAX_BYTES) * 100
+    return (f"MEMORY.md {n_lines}/{MAX_LINES} lines ({n_lines / MAX_LINES:.0%}), "
+            f"{n_bytes / 1024:.1f}/{MAX_BYTES // 1024}KB ({n_bytes / MAX_BYTES:.0%}) "
+            f"of Claude Code's load limit",
+            pct >= 80)
 
 
 def cmd_session_start(args):
@@ -377,17 +396,23 @@ def cmd_session_start(args):
     proj = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
     state, detail = memory_state(memory_repo, proj)
     summary, over = ("", False)
+    index, near = ("", False)
     if state == "VERSION CONTROLLED":
         summary, over = store_summary(memory_repo, detail)
+        index, near = index_summary(detail)
     print("conspire session status")
     print(f"  machine:  {tag}")
     print(f"  project:  {proj}")
-    print(f"  memory:   {state} {detail}{summary}")
     print(f"  sync:     {sync_status_line(memory_repo)}")
+    print(f"  memory:   {state} {detail}{summary}")
+    if index:
+        print(f"  index:    {index}")
     print("Claude: surface this block briefly in your first reply. If memory is")
     print("UNREGISTERED, poll the user: version-controlled memory, or opt out?")
     if over:
         print("Claude: this store has memory over its prune limits; suggest /memory-prune.")
+    if near:
+        print("Claude: this store's index is near Claude Code's load limit; suggest /memory-prune.")
     return 0
 
 

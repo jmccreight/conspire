@@ -14,12 +14,14 @@ lines, same order, only the values after each colon change:
     *conspire session status:*
     - machine: <tag>
     - project: <path>
-    - memory: version controlled -> <store path>
     - sync: in sync with origin
+    - memory: version controlled -> <store path> (<N> files; within CHAR & LINE limits)
+    - index: MEMORY.md <N>/200 lines (<P>%), <X>/25KB (<P>%) of Claude Code's load limit
 
-The four values come from the hook's `machine:`, `project:`, `memory:`
-and `sync:` lines -- same words, only lowercased. Add nothing else to
-the block.
+The values come from the hook's `machine:`, `project:`, `sync:`,
+`memory:` and `index:` lines -- same words, only lowercased. The
+`index:` line appears only for a version-controlled store; omit it
+when the hook omits it. Add nothing else to the block.
 
 If the memory line says UNREGISTERED, ask me -- version-controlled
 memory or opt out? -- and on my answer run `conspire register` inside

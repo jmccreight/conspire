@@ -97,18 +97,11 @@ Start Claude Code in the project as usual. The session-start hook (details in th
   *conspire session status:*
     - machine: <tag>
     - project: <path>
-    - memory: unregistered
     - sync: no upstream tracking info
+    - memory: unregistered
 ```
 
-If the project is not yet registered, the agent will prompt you to run `conspire register`, from the project root directory.
-
-Once registered, the memory line also reports the store's size against
-the limits in the memory repo's `prune-limits.tsv`, e.g.
-`memory: version controlled -> ~/my_claude_memories/memory/project_one (12 files; over limits: 1 file, 2 descriptions)`;
-when something is over, the hook asks the agent to suggest `/memory-prune`.
-
-This command will ask you to:
+If the project is not yet registered, the agent will prompt you to run `conspire register`, from the project root directory. This command will ask you to:
 
 - Set a canonical name for the project (default is project repo name): e.g. `myproj`
 - Opt in or out from version-controlled memory
@@ -157,7 +150,32 @@ git push
 ### The memory index
 
 Each project store has an index, `MEMORY.md`: the only memory file
-Claude Code loads at project session start with one line per memory file. conspire generates it on commit from every memory file's `description:` field, and refuses the commit if it would exceed Claude Code's load limits. Never edit it by hand. More in [DEVELOPER.md](DEVELOPER.md).
+Claude Code loads at project session start with one line per memory file. conspire generates the `MEMORY.md` on commit from every memory file's `description:` field, and refuses the commit if it would exceed Claude Code's load limits. Never edit it by hand. More in [DEVELOPER.md](DEVELOPER.md).
+
+### Memory pruning
+
+Memory stores accumulate bloat. Much of it is dead weight: memories about work that finished, references to files or branches that no longer exist, and facts already recorded in the project's own docs or in another memory. Bloat also comes from memories growing in place: files that became running logs of dated updates, and `description:` lines that swelled into paragraphs loaded at every session start.
+
+Two kinds of limits watch for memory bloat. Both are reported in the session-start status block; when a store is over an overgrowth limit, or the index is at 80% or more of the load limit, the hook suggests running the `/memory-prune` skill:
+
+```
+conspire session status
+  machine:  mylaptop
+  project:  /Users/user_name/myproj
+  sync:     in sync with origin
+  memory:   VERSION CONTROLLED -> ~/my_claude_memories/memory/myproj (96 files; over LINE limit: 1 file; over CHAR limit: 2 descriptions)
+  index:    MEMORY.md 97/200 lines (49%), 21.3/25KB (85%) of Claude Code's load limit
+Claude: surface this block briefly in your first reply. If memory is
+UNREGISTERED, poll the user: version-controlled memory, or opt out?
+Claude: this store has memory over its prune limits; suggest /memory-prune.
+Claude: this store's index is near Claude Code's load limit; suggest /memory-prune.
+```
+
+**Overgrowth limits** are yours to determine for each project. A LINE limit (per memory file) and a CHAR limit (per `description:`) go in the memory repo's `prune-limits.tsv`. Both start at the `default` row (200 lines, 250 characters) and can be set per store. The `memory:` line reports the store against them. The `/memory-prune` skill asks whether to change them and edits the file for you.
+
+**The load limit** is Claude Code's: it reads only the first 200 lines / 25KB of `MEMORY.md` and silently drops the rest. The memory repo's pre-commit hook refuses to commit when the regenerated `MEMORY.md` would exceed that, so memories never silently stop loading; the `index:` line shows how close the store is, so you hear about it before a refused sync.
+
+In the example above, the hook suggests the `/memory-prune` skill twice because both limit kinds are over their respective thresholds. The `memory-prune` skill builds one report and then works with you interactively to change or fix only the items you approve. The skill looks for both kinds of bloat: `**Open:**` bullets that git history suggests are done, references to things that no longer exist in the project, facts duplicated elsewhere, running logs to collapse, long descriptions to shorten, and oversized files.
 
 ## Known caveats
 
