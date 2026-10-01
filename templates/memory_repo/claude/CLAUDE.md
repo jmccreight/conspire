@@ -11,7 +11,7 @@ machine tag, project, and the project's memory state. Surface that
 block at the top of your first reply, in exactly this form -- same
 lines, same order, only the values after each colon change:
 
-    *Session Status:*
+    *conspire session status:*
     - machine: <tag>
     - project: <path>
     - memory: version controlled -> <store path>
@@ -23,7 +23,9 @@ the block.
 
 If the memory line says UNREGISTERED, ask me -- version-controlled
 memory or opt out? -- and on my answer run `conspire register` inside
-the project (it prompts for a name and in/out).
+the project (it prompts for a name and in/out). If the hook says the
+store is over its prune limits, suggest `/memory-prune` once, in your
+first reply, after the block.
 
 ## Memory conventions
 

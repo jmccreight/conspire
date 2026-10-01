@@ -317,19 +317,77 @@ def memory_state(memory_repo, proj):
             "(ask the user: register via `conspire register`, or opt out)")
 
 
+def prune_limits(memory_repo, store):
+    """(lines, chars) for a store from <memory_repo>/prune-limits.tsv:
+    the store's row, else the default row, else 150/150. The same
+    file the memory-prune skill reads and writes."""
+    lines, chars = 150, 150
+    f = memory_repo / "prune-limits.tsv"
+    if not f.is_file():
+        return lines, chars
+    rows = {}
+    for ln in f.read_text(encoding="utf-8").splitlines():
+        p = ln.split("\t")
+        if len(p) >= 3 and not ln.startswith("#"):
+            try:
+                rows[p[0]] = (int(p[1]), int(p[2]))
+            except ValueError:
+                pass
+    return rows.get(store) or rows.get("default") or (lines, chars)
+
+
+def store_stats(store_dir, lines, chars):
+    """(n_files, n_over_lines, n_over_chars) over the store's top-level
+    *.md except MEMORY.md; inbox/ is a subdirectory, so it is skipped."""
+    n = over_l = over_c = 0
+    for f in store_dir.iterdir():
+        if not f.is_file() or f.suffix.lower() != ".md" or f.name == "MEMORY.md":
+            continue
+        n += 1
+        try:
+            text = f.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if text.count("\n") + 1 > lines:
+            over_l += 1
+        _, desc, _ = parse_frontmatter(text)
+        if desc and len(desc) > chars:
+            over_c += 1
+    return n, over_l, over_c
+
+
+def store_summary(memory_repo, detail):
+    """'(N files; within limits)' or '(N files; over limits: ...)' for a
+    VERSION CONTROLLED memory line; '' if the store dir is missing."""
+    store_dir = Path(detail[3:]).expanduser()
+    if not store_dir.is_dir():
+        return "", False
+    n, over_l, over_c = store_stats(store_dir, *prune_limits(memory_repo, store_dir.name))
+    if not (over_l or over_c):
+        return f" ({n} files; within limits)", False
+    parts = ([f"{over_l} file{'s' if over_l != 1 else ''}"] if over_l else []) + \
+            ([f"{over_c} description{'s' if over_c != 1 else ''}"] if over_c else [])
+    return f" ({n} files; over limits: {', '.join(parts)})", True
+
+
 def cmd_session_start(args):
     memory_repo = get_memory_repo()
     cmd_sync(argparse.Namespace(quiet=True))
     tag = machine_tag() or "UNSET (run: conspire bootstrap)"
     proj = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
     state, detail = memory_state(memory_repo, proj)
+    summary, over = ("", False)
+    if state == "VERSION CONTROLLED":
+        summary, over = store_summary(memory_repo, detail)
     print("conspire session status")
     print(f"  machine:  {tag}")
     print(f"  project:  {proj}")
-    print(f"  memory:   {state} {detail}")
+    print(f"  memory:   {state} {detail}{summary}")
     print(f"  sync:     {sync_status_line(memory_repo)}")
     print("Claude: surface this block briefly in your first reply. If memory is")
     print("UNREGISTERED, poll the user: version-controlled memory, or opt out?")
+    if over:
+        print("Claude: this store has memory over its prune limits; suggest /memory-prune.")
     return 0
 
 

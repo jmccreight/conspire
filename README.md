@@ -94,7 +94,7 @@ The conspire conventions found in your new `CLAUDE.md` file instruct the agent o
 Start Claude Code in the project as usual. The session-start hook (details in the next section) will see if the current project is registered and print the conspire status block of the following form:
 
 ```
-  *Session Status:*
+  *conspire session status:*
     - machine: <tag>
     - project: <path>
     - memory: unregistered
@@ -102,6 +102,11 @@ Start Claude Code in the project as usual. The session-start hook (details in th
 ```
 
 If the project is not yet registered, the agent will prompt you to run `conspire register`, from the project root directory.
+
+Once registered, the memory line also reports the store's size against
+the limits in the memory repo's `prune-limits.tsv`, e.g.
+`memory: version controlled -> ~/my_claude_memories/memory/project_one (12 files; over limits: 1 file, 2 descriptions)`;
+when something is over, the hook asks the agent to suggest `/memory-prune`.
 
 This command will ask you to:
 
