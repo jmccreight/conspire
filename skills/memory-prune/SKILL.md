@@ -73,7 +73,10 @@ Then build one report. Change nothing while building it.
    - No frontmatter, or two files with the same `name:`.
 
 Present the report grouped by check, numbered across the whole
-report. Ask which numbers to apply. Apply only those; for a file
+report. For each proposed rewrite, show the current text and the
+proposed text as two blockquotes separated by a line holding only
+`->`, not in a fenced block (fenced lines do not wrap in the
+terminal). Ask which numbers to apply. Apply only those; for a file
 deletion, show the file's full text first. After edits, list the
 changed files and remind the user to run `conspire sync`.
 
